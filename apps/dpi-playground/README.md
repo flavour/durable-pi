@@ -2,7 +2,7 @@
 
 The web interface of the Durable Agent Network. It runs no agents. The **hub** (Node, Express) keeps the device registry and tokens, proxies REST calls to each device's [`dpi-backend`](../dpi-backend), and multiplexes every device, session and agent stream into one SSE connection per browser tab. The **FE** (Vue 3, Vite 8) renders those streams through the SDK models in [`../dpi-sdk`](../dpi-sdk).
 
-See the [repository README](../../README.md) for screenshots, the network setup and the demo.
+See the [repository README](../../README.md) for screenshots and the network setup.
 
 ## Run
 
