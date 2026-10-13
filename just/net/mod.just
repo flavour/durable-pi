@@ -5,7 +5,9 @@ set shell := ["zsh", "-cu"]
 set positional-arguments
 set working-directory := "../../apps/dpi-sdk"
 
-net := "NODE_NO_WARNINGS=1 npx tsx scripts/net.ts"
+# npm run, not npx: npx would download tsx and then fail to resolve dpi-sdk's own deps.
+# Needs `just install` (or cd apps/dpi-sdk && npm install) once per checkout.
+net := "NODE_NO_WARNINGS=1 npm run --silent net --"
 
 # List device commands
 [default]
