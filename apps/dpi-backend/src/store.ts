@@ -62,7 +62,7 @@ import { createJobs, JobRuns, JOB_DEFS, jobDef, resolveJobInput, type Jobs } fro
 import { ADDON_INFO, createAddons, PROMPTS, PromptChecklist, type Addons } from "./addons.js";
 import { JOB_RUNS_DOC } from "../../dpi-sdk/src/jobs.js";
 
-export const DURABLE_VERSION = "1.0.3";
+export const DURABLE_VERSION = "1.2.0";
 
 /** Tools that create, update or delete: shell, files, App State, job runs, sessions, pages and subagents. */
 export const WRITE_TOOLS = new Set([
