@@ -39,7 +39,8 @@ import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT as ctx, withAbortSignal } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
-import { curatedModels, defaultModelId } from "./model-catalog.js";
+import { curatedModels, defaultModelId, iconForModel } from "./model-catalog.js";
+import { LLAMA_PROVIDER, installLlamaCpp } from "./llamacpp.js";
 import { fauxModels, installFaux } from "./faux.js";
 import {
   Harness,
@@ -90,7 +91,9 @@ export interface StoreOptions {
   dataDir: string;
   startDirs: string[];
   name: string;
-  provider: "openrouter" | "faux";
+  provider: "openrouter" | "llamacpp" | "faux";
+  /** The llama.cpp server, used when provider is llamacpp. */
+  llama?: { url: string; apiKey?: string };
 }
 
 /** Agent documents a client may read or stream, by kind. */
@@ -178,6 +181,7 @@ export class Store {
 
   private constructor(readonly options: StoreOptions) {
     if (options.provider === "faux") installFaux(this.models);
+    else if (options.provider === "llamacpp") installLlamaCpp(this.models, options.llama ?? { url: "http://127.0.0.1:8080" });
     else {
       const provider = openrouterProvider();
       const catalog = provider.getModels();
@@ -224,6 +228,9 @@ export class Store {
       if (!(await store.shared.initialized()))
         await store.shared.initialize({ goal: "Explore durable agents", counter: 0, notes: [] });
       store.modelList = await store.loadModels();
+      // A llama.cpp device starts even when its server is not answering yet (a GPU box that booted
+      // after this one); pick the models up as soon as it does.
+      if (options.provider === "llamacpp" && store.modelList.length === 0) store.retryLlamaModels();
       for (const { harness } of store.opened.values()) harness.resume();
       return store;
     } catch (e) {
@@ -264,7 +271,21 @@ export class Store {
   }
 
   private defaultModel() {
-    return this.options.provider === "faux" ? fauxModels[0].id : defaultModelId;
+    if (this.options.provider === "faux") return fauxModels[0].id;
+    // A llama.cpp device defaults to the first model its server serves: there is no catalog default.
+    return this.options.provider === "llamacpp" ? (this.modelList[0]?.id ?? "") : defaultModelId;
+  }
+
+  /** Retry a llama.cpp model list that came back empty because the server was not answering. */
+  private retryLlamaModels(attempt = 1) {
+    if (attempt > 20) return;
+    const timer = setTimeout(async () => {
+      const models = await this.loadModels().catch(() => []);
+      if (!models.length) return this.retryLlamaModels(attempt + 1);
+      this.modelList = models;
+      this.notify();
+    }, 15_000);
+    timer.unref(); // a device with no reachable server still exits normally
   }
 
   private async loadModels(): Promise<ModelInfo[]> {
@@ -279,6 +300,22 @@ export class Store {
         reasoning: false,
         cost: { input: 0, output: 0 },
       }));
+    if (this.options.provider === "llamacpp") {
+      // Whatever the server serves is what clients may pick, so refresh its list at startup.
+      await this.models
+        .refresh({ providers: [LLAMA_PROVIDER], force: true, signal: AbortSignal.timeout(10000) })
+        .catch(() => {});
+      return this.models.getModels(LLAMA_PROVIDER).map((m) => ({
+        id: m.id,
+        provider: LLAMA_PROVIDER,
+        name: m.name,
+        tier: "local",
+        icon: iconForModel(m.id),
+        contextWindow: m.contextWindow,
+        reasoning: m.reasoning,
+        cost: { input: m.cost.input, output: m.cost.output },
+      }));
+    }
     const available = await this.models.getAvailable("openrouter", { signal: AbortSignal.timeout(10000) });
     return curatedModels.flatMap((c) => {
       const m = available.find((m) => m.id === c.id);
@@ -304,6 +341,10 @@ export class Store {
       const id = fauxModels.some((m) => m.id === model?.modelId) ? model!.modelId : fauxModels[0].id;
       return { provider: "faux", modelId: id };
     }
+    if (this.options.provider === "llamacpp") {
+      const id = model?.provider === LLAMA_PROVIDER ? model.modelId : "";
+      return { provider: LLAMA_PROVIDER, modelId: this.models.getModel(LLAMA_PROVIDER, id) ? id : this.defaultModel() };
+    }
     const exact = model?.provider === "openrouter" ? model.modelId : `${model?.provider}/${model?.modelId}`;
     return {
       provider: "openrouter",
@@ -318,7 +359,9 @@ export class Store {
     const known =
       this.options.provider === "faux"
         ? m.provider === "faux" && fauxModels.some((f) => f.id === m.modelId)
-        : m.provider === "openrouter" &&
+        : this.options.provider === "llamacpp"
+          ? m.provider === LLAMA_PROVIDER && !!this.models.getModel(m.provider, m.modelId)
+          : m.provider === "openrouter" &&
           curatedModels.some((c) => c.id === m.modelId) &&
           !!this.models.getModel(m.provider, m.modelId);
     if (!known) throw invalid(`Unknown model ${m.provider}/${m.modelId}. Choose one from GET /v1/device models`);

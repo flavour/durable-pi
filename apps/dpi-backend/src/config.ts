@@ -13,9 +13,20 @@ export interface BackendConfig {
   envFile: string;
   dataDir: string;
   startDirs: string[];
-  provider: "openrouter" | "faux";
+  /** Where this device's models come from: a hosted catalog, a llama.cpp server, or the test echo. */
+  provider: "openrouter" | "llamacpp" | "faux";
+  /** The llama.cpp server, used when provider is llamacpp. */
+  llama: { url: string; apiKey?: string };
   token: string;
 }
+
+/** `DPI_PROVIDER` tolerates the spellings people reach for: llama.cpp, llama-cpp, llamacpp, local. */
+const parseProvider = (value: string | undefined): BackendConfig["provider"] => {
+  const name = (value ?? "openrouter").toLowerCase().replace(/[^a-z]/g, "");
+  if (name === "faux") return "faux";
+  if (name === "llamacpp" || name === "local") return "llamacpp";
+  return "openrouter";
+};
 
 const expand = (p: string) => (p === "~" ? homedir() : p.startsWith("~/") ? join(homedir(), p.slice(2)) : p);
 
@@ -41,7 +52,11 @@ export function loadConfig(argv = process.argv.slice(2), env = process.env): Bac
       .split(":")
       .filter(Boolean)
       .map((p) => resolve(expand(p))),
-    provider: (env.DPI_PROVIDER ?? "openrouter") === "faux" ? "faux" : "openrouter",
+    provider: parseProvider(env.DPI_PROVIDER),
+    llama: {
+      url: flag("--llama-url", env.DPI_LLAMA_URL ?? env.LLAMA_BASE_URL ?? "http://127.0.0.1:8080"),
+      apiKey: env.DPI_LLAMA_API_KEY ?? env.LLAMA_API_KEY,
+    },
     token: env.DPI_TOKEN ?? "",
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535)

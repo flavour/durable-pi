@@ -178,3 +178,28 @@ export const curatedModels = [
   },
 ] as const;
 export const defaultModelId = "anthropic/claude-sonnet-5.5";
+
+/** Icons this checkout ships, by model family. A model whose family has no icon gets lab.png. */
+const FAMILY_ICONS: [string, string][] = [
+  ["claude", "anthropic.png"],
+  ["anthropic", "anthropic.png"],
+  ["gpt", "openai.png"],
+  ["openai", "openai.png"],
+  ["gemini", "gemini.png"],
+  ["google", "gemini.png"],
+  ["qwen", "qwen.png"],
+  ["llama", "meta.png"],
+  ["deepseek", "deepseek.png"],
+  ["minimax", "minimax.png"],
+  ["kimi", "kimi.png"],
+  ["moonshot", "kimi.png"],
+  ["grok", "grok.png"],
+  ["xai", "grok.png"],
+  ["glm", "zai.png"],
+  ["zai", "zai.png"],
+  ["xiaomi", "xiaomi.png"],
+];
+
+/** The icon for any model id, including the ones a llama.cpp server names after its GGUF file. */
+export const iconForModel = (id: string) =>
+  FAMILY_ICONS.find(([family]) => id.toLowerCase().includes(family))?.[1] ?? "lab.png";
