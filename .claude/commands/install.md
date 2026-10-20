@@ -21,7 +21,7 @@ APPS: `apps/dpi-sdk`, `apps/dpi-backend`, `apps/dpi-playground`, `apps/dpi-tui`
 ```text
 justfile                 # groups: net, backend, hub, tui, test (just/<group>/mod.just)
 dpi-network.example.yaml # template: defaults + the local device, commented ssh and exe-dev examples
-.env.example             # OPENROUTER_API_KEY (copied into each device's backend.env), optional TypeSafe settings
+.env.example             # OPENROUTER_API_KEY (copied into each device's backend.env), optional llama.cpp and TypeSafe settings
 apps/dpi-sdk/            # contract, client, models, registry, ops drivers (scripts/net.ts)
 apps/dpi-backend/        # the device server (port 4780)
 apps/dpi-playground/     # hub + Vue web UI (port 4781)
@@ -59,9 +59,9 @@ Optional, so report them and continue:
 
 ### Step 2 — Check Environment
 
-1. If `.env` is missing, copy the template: `cp .env.example .env`, then ask the user to paste their OpenRouter key into `.env` (https://openrouter.ai/keys). Do not ask for the key in chat.
-2. Confirm the key is set without printing it: `grep -Eq '^OPENROUTER_API_KEY=sk-' .env && echo set || ([ -n "$OPENROUTER_API_KEY" ] && echo "set in environment") || echo missing`.
-3. If it is missing and the user wants to continue without a key, tell them the backend can run with the free deterministic model: `DPI_PROVIDER=faux just backend run`.
+1. Ask which models this machine should use: OpenRouter (needs a key), a local llama.cpp server (`llama-server`, no key), or the free deterministic test model. Only for OpenRouter: if `.env` is missing, copy the template with `cp .env.example .env`, then ask the user to paste their key into `.env` (https://openrouter.ai/keys). Do not ask for the key in chat.
+2. For OpenRouter, confirm the key is set without printing it: `grep -Eq '^OPENROUTER_API_KEY=sk-' .env && echo set || ([ -n "$OPENROUTER_API_KEY" ] && echo "set in environment") || echo missing`.
+3. For llama.cpp, add the device settings instead of a key: `env: { DPI_PROVIDER: llamacpp, DPI_LLAMA_URL: http://<host>:<port>/v1 }` on the device in `dpi-network.yaml` (an optional `DPI_LLAMA_API_KEY` in `.env` only if the server runs with `--api-key`). For no models at all, `DPI_PROVIDER: faux` gives the free deterministic model.
 
 ### Step 3 — Install Dependencies
 
@@ -71,7 +71,7 @@ Optional, so report them and continue:
 
 1. If `dpi-network.yaml` is missing, create it: `cp dpi-network.example.yaml dpi-network.yaml`. Never overwrite an existing one.
 2. `just net ids`: the file parses and lists device ids. Confirm `local` is among them.
-3. `just net up local`: writes `~/.dpi/backend.env` with a fresh `DPI_TOKEN` (or keeps an existing one), copies `OPENROUTER_API_KEY` from `.env`, and registers the device in `~/.dpi/network.sqlite`. Then confirm `test -f ~/.dpi/backend.env && stat -f '%Lp' ~/.dpi/backend.env` (Linux: `stat -c '%a'`) shows `600`. Never print the file.
+3. `just net up local`: writes `~/.dpi/backend.env` with a fresh `DPI_TOKEN` (or keeps an existing one), copies `env_keys` such as `OPENROUTER_API_KEY` from `.env` (a warning for a key you do not use is fine), writes the device's `env:` settings, and registers the device in `~/.dpi/network.sqlite`. Then confirm `test -f ~/.dpi/backend.env && stat -f '%Lp' ~/.dpi/backend.env` (Linux: `stat -c '%a'`) shows `600`. Never print the file.
 4. `just hub build`: type-checks and builds the web UI that `just hub start` serves.
 5. Tell the user that new sessions start in `~/dpi-work` (created by `just net up local`) unless they set `start_dirs`, that any existing folder on the device works as a session cwd, and that remote machines are added by uncommenting the `ssh` or `exe-dev` example in `dpi-network.yaml` and running `just net up <id>`.
 

@@ -28,5 +28,6 @@ __pycache__/
 # local artifacts
 test-results/
 tmp/
+.tmp/
 *.log
 .DS_Store

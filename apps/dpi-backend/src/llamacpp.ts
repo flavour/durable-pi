@@ -6,7 +6,8 @@ import { createProvider, type MutableModels } from "@earendil-works/pi-ai/models
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import type { Model } from "@earendil-works/pi-ai";
 
-export const LLAMA_PROVIDER = "llamacpp";
+// Provider id matches pi's own llama.cpp extension, so a model id means the same thing on both sides.
+export const LLAMA_PROVIDER = "llama.cpp";
 
 /** Where a llama.cpp server lives. `url` may be written with or without its `/v1`. */
 export interface LlamaServer {
@@ -31,12 +32,11 @@ type RawModel = {
 
 const positiveInt = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : undefined);
 const has = (list: unknown, value: string) => Array.isArray(list) && list.includes(value);
+const statusOf = (m: RawModel) => (typeof m.status?.value === "string" ? m.status.value : "loaded"); // older servers report no status
 
 /** A model the server can actually answer with: loaded or woken on request, and text-producing. */
-const usable = (m: RawModel) => {
-  const status = typeof m.status?.value === "string" ? m.status.value : "loaded"; // older servers report no status
-  return (status === "loaded" || status === "sleeping") && !has(m.architecture?.output_modalities, "decisions");
-};
+const usable = (m: RawModel) =>
+  (statusOf(m) === "loaded" || statusOf(m) === "sleeping") && !has(m.architecture?.output_modalities, "decisions");
 
 async function getJson(url: string, apiKey: string | undefined, signal: AbortSignal): Promise<unknown | undefined> {
   const response = await fetch(url, {
@@ -52,19 +52,21 @@ export async function llamaModels(server: LlamaServer, signal: AbortSignal): Pro
   const root = serverRoot(server.url);
   const base = `${root}/v1`;
   const list = await getJson(`${base}/models`, server.apiKey, signal);
-  // /props is llama.cpp's own endpoint (not under /v1): the chat template is what says whether this
-  // model switches thinking on with an enable_thinking argument. Best-effort: older servers have no /props.
-  const serverProps = await getJson(`${root}/props`, server.apiKey, signal).catch(() => undefined);
   const raw = (list as { data?: unknown } | undefined)?.data;
-  const models = (Array.isArray(raw) ? raw : []).filter((m): m is RawModel => typeof m === "object" && m !== null).filter(usable);
+  const models = (Array.isArray(raw) ? raw : [])
+    .filter((m): m is RawModel => typeof m === "object" && m !== null)
+    .filter(usable);
   return Promise.all(
     models.map(async (m) => {
       const id = typeof m.id === "string" ? m.id : "";
       if (!id) throw Error("llama.cpp /models entry without an id");
-      // A router serves several models, so ask it about each one; single-model servers ignore the query.
-      const props = (await getJson(`${root}/props?model=${encodeURIComponent(id)}`, server.apiKey, signal).catch(
-        () => undefined,
-      )) ?? serverProps;
+      // /props (llama.cpp's own endpoint, not under /v1) reports the chat template, which is what says
+      // whether this model switches thinking on with an enable_thinking argument. Only loaded models are
+      // asked: querying a sleeping model would wake it, and an unloaded router preset would load it.
+      const props =
+        statusOf(m) === "loaded"
+          ? await getJson(`${root}/props?model=${encodeURIComponent(id)}`, server.apiKey, signal).catch(() => undefined)
+          : undefined;
       return toModel(id, m, base, reasoningOf(props));
     }),
   );
@@ -113,14 +115,15 @@ export function installLlamaCpp(models: MutableModels, server: LlamaServer) {
       id: LLAMA_PROVIDER,
       name: `llama.cpp ${serverRoot(server.url)}`,
       baseUrl,
-      // A llama.cpp server only checks a bearer token when started with --api-key, so an
-      // unkeyed server is still "configured": the device needs no secret to use its own hardware.
+      // A llama.cpp server only checks a bearer token when started with --api-key, so an unkeyed
+      // server is still "configured": the device needs no secret to use its own hardware. pi-ai's
+      // OpenAI client insists on a key, hence the "local" placeholder pi itself sends.
       auth: {
         apiKey: {
           name: "llama.cpp server",
           resolve: async () => ({
-            auth: server.apiKey ? { apiKey: server.apiKey } : {},
-            source: server.apiKey ? "DPI_LLAMA_API_KEY" : "llama.cpp server",
+            auth: { apiKey: server.apiKey ?? "local" },
+            source: server.apiKey ? "DPI_LLAMA_API_KEY" : "placeholder",
           }),
         },
       },

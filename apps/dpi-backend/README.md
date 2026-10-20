@@ -19,6 +19,23 @@ npm start                      # 127.0.0.1:4780; data in ~/.dpi/backend
 
 With the repo's network config, `just net up local && just backend run` does the same thing. `just backend run` first stops whatever already listens on the backend's port.
 
+### Models from your own llama.cpp server, no API key
+
+Point a device at a `llama-server` and its GGUFs become the device's models, at zero cost:
+
+```bash
+# in ~/.dpi/backend.env (or the environment): remove OPENROUTER_API_KEY, and add
+DPI_PROVIDER=llamacpp
+DPI_LLAMA_URL=http://my-gpu-box:8080/v1  # with or without the /v1; LLAMA_BASE_URL works too
+```
+
+`DPI_LLAMA_API_KEY` (or `LLAMA_API_KEY`) is only needed when the server was started with `--api-key`.
+Both the single-model (`llama-server -m …`) and router (`--models-dir …`) forms work; loaded and
+sleeping models are offered, unloaded router presets are not, because listing one would load it into
+a context size nobody chose. `GET /v1/device` then lists the server's models under provider
+`llama.cpp`, with each model's real context window and cost 0, and thinking is offered when the
+model's chat template supports it.
+
 ## Configuration: `~/.dpi/backend.env`
 
 | Key | Default | Meaning |
@@ -30,11 +47,13 @@ With the repo's network config, `just net up local && just backend run` does the
 | `DPI_DATA_DIR` | `$DPI_HOME/backend` | catalog, app state, `sessions/`, `archive/` |
 | `DPI_HOME` | `~/.dpi` | where `backend.env` is read (set by the service unit) |
 | `DPI_ENV_FILE` | `$DPI_HOME/backend.env` | the env file to read |
-| `DPI_PROVIDER` | `openrouter` | `faux` gives a free deterministic model for tests |
-| `OPENROUTER_API_KEY` | | model access, required unless `DPI_PROVIDER=faux`. Without it the device lists no models. Never sent to clients |
+| `DPI_PROVIDER` | `openrouter` | `llamacpp` (also accepted: `llama.cpp`, `llama-cpp`, `local`) uses a local llama.cpp server; `faux` gives a free deterministic model for tests |
+| `DPI_LLAMA_URL` | `http://127.0.0.1:8080` | the llama.cpp server, used when `DPI_PROVIDER=llamacpp`. Written with or without `/v1`; `LLAMA_BASE_URL` is accepted as well, and `--llama-url` overrides both |
+| `OPENROUTER_API_KEY` | | model access, required unless `DPI_PROVIDER=llamacpp` or `faux`. Without it the device lists no models. Never sent to clients |
+| `DPI_LLAMA_API_KEY` | | only when the llama.cpp server was started with `--api-key`; `LLAMA_API_KEY` is accepted as well |
 | `TYPESAFE_API_KEY` | | optional: `jev-damage-control` asks Jev with it, else through OpenRouter |
 
-Flags `--port`, `--host`, `--name`, `--start-dirs`, `--data-dir` and `--env-file` override the env.
+Flags `--port`, `--host`, `--name`, `--start-dirs`, `--data-dir`, `--llama-url` and `--env-file` override the env.
 
 ## Deploy to other devices
 

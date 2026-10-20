@@ -23,15 +23,16 @@ Open the repository in Claude Code (or Pi, or your favorite agentic coding tool)
 /install
 ```
 
-The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 24, npm, just and zsh, confirms `OPENROUTER_API_KEY` in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
+The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 24, npm, just and zsh, confirms how this machine will get models — `OPENROUTER_API_KEY` in `.env`, or a llama.cpp server, or the free test model — without printing secrets, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
 
 ### Manual Install
 
-**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), an [OpenRouter](https://openrouter.ai) API key. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
+**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), and either an [OpenRouter](https://openrouter.ai) API key or a [llama.cpp](https://github.com/ggml-org/llama.cpp) server (`llama-server`) reachable from the device — see [apps/dpi-backend/README.md](apps/dpi-backend/README.md). Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
 
 ```bash
 cp .env.example .env                           # set OPENROUTER_API_KEY; copied into each device's backend.env, never sent to clients
 cp dpi-network.example.yaml dpi-network.yaml   # your devices; starts with only `local`
+                                               # a device can use a llama.cpp server instead: set DPI_PROVIDER=llamacpp and DPI_LLAMA_URL in its env
 just install                                   # npm install for dpi-sdk, dpi-backend, dpi-playground and dpi-tui
 just net up local                              # write ~/.dpi/backend.env with a fresh token and register this machine
 just hub build                                 # build the web UI the hub serves (once, and after UI changes)
@@ -228,7 +229,7 @@ Each device owns its agents and their data in SQLite. The hub only stores how to
 ```text
 durable-pi/
 ├── dpi-network.example.yaml           # template for dpi-network.yaml (gitignored): devices, kinds, start_dirs
-├── .env.example                       # OPENROUTER_API_KEY (+ optional TYPESAFE_API_KEY for jev-damage-control)
+├── .env.example                       # OPENROUTER_API_KEY (+ optional llama.cpp key, TYPESAFE_API_KEY for jev-damage-control)
 ├── justfile                           # install, check, and one module per work area
 ├── just/                              # net, backend, hub, tui, test (one mod.just each)
 ├── apps/
@@ -268,7 +269,7 @@ just test smoke faux       # TUI end to end in tmux against a faux backend
 
 | Check | Result |
 |---|---|
-| `just check`: SDK (14), backend (10), hub (1) and TUI (8) unit tests with strict types, the web build and lint, on the faux model | **pass** |
+| `just check`: SDK (14), backend (13), hub (1) and TUI (8) unit tests with strict types, the web build and lint, on the faux model | **pass** |
 | `just test ui`: 28 web checks against two faux devices, including offline recovery, bad tokens, read only, extensions, durable jobs, the context bar, slash commands, keyboard and mobile | **28 of 28** |
 | `just test device` on a cloud VM with a real model: the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
