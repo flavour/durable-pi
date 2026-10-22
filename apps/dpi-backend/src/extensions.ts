@@ -27,12 +27,15 @@ export const Workspace = defineDoc<AppState>({
   history: "rewindable",
   fork: "asOf",
   initial: () => ({ goal: "Explore durable agents", counter: 0, notes: [] }),
+  // Rewindable history replays deltas, so a base now and then keeps a reload short.
+  checkpointWhen: (_state, _ops, { deltasSinceBase }) => deltasSinceBase >= 64,
 });
 const Receipt = defineDoc<{ applied: boolean; result: string }>({
   kind: "demo.receipt",
   version: 1,
   scope: "task",
   initial: () => ({ applied: false, result: "" }),
+  checkpointWhen: () => false,
 });
 /** ping_on_call_engineer pages once per agent; this records the page. */
 const Pager = defineDoc<{ paged: boolean; at: number; page: string; summary: string }>({
@@ -42,6 +45,7 @@ const Pager = defineDoc<{ paged: boolean; at: number; page: string; summary: str
   history: "latest",
   fork: "initial",
   initial: () => ({ paged: false, at: 0, page: "", summary: "" }),
+  checkpointWhen: () => false,
 });
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));

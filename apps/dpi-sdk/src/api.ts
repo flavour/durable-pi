@@ -244,6 +244,15 @@ export interface Page<T> {
 
 // ---------------------------------------------------------------- tasks and usage
 
+/** Durable task states, a closed set in pi-durable: `sleeping` is new in 1.4.0 (a stored wait, no invocation held). */
+export type TaskStateName = "pending" | "running" | "waiting" | "sleeping" | "completing" | "terminal";
+
+/** Terminal task outcomes, as recorded in a task receipt. */
+export type TaskOutcomeName = "completed" | "failed" | "aborted" | "orphaned" | "faulted";
+
+/** Why a live task cannot run here. `restart_limit`: the crash-loop guard parked it after too many restarts. */
+export type TaskBlockedReason = "missing_task" | "task_too_old" | "migration_failed" | "restart_limit";
+
 export interface TaskNode {
   id: number;
   kind: string;
@@ -251,7 +260,10 @@ export interface TaskNode {
   owner?: number;
   background: boolean;
   aborting?: boolean;
-  state: { status: string; phase?: string; on?: number[]; policy?: string };
+  /** Set when the task cannot run in this device's registry: a missing definition, or a parked crash-looping task. */
+  blocked?: TaskBlockedReason;
+  /** `waiting` parks on `on`; `sleeping` parks until the device clock reaches `until` (ms since the epoch). */
+  state: { status: string; phase?: string; on?: number[]; policy?: string; until?: number };
   conversations: number[];
   /** What the task is: the tool name of a `pi.tool` task, or the job title of a durable job. */
   label?: string;

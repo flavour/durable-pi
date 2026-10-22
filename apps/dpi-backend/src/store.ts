@@ -16,6 +16,7 @@ import type {
   SessionSummary,
   TaskNode,
   TaskOutcome,
+  TaskBlockedReason,
   ThinkingLevel,
   UsageTotals,
   WhenBusy,
@@ -573,7 +574,7 @@ export class Store {
             },
             progress: { partialIntervalMs: 100, outputIntervalMs: 100 },
           },
-          onReport: (e) => console.error("[durable]", String(e)),
+          onReport: (e, info) => console.error("[durable]", info.type, String(e)),
         },
         ctx,
       );
@@ -681,8 +682,9 @@ export class Store {
       owner?: number;
       background: boolean;
       abortRequested?: boolean;
-      state: { status: string; phase?: string; on?: readonly number[]; policy?: string; outcome?: string };
+      state: { status: string; phase?: string; on?: readonly number[]; policy?: string; until?: number; outcome?: string };
       conversations?: readonly number[];
+      blocked?: TaskBlockedReason;
     };
     return {
       id: n.id,
@@ -691,11 +693,13 @@ export class Store {
       ...(n.owner !== undefined ? { owner: n.owner } : {}),
       background: !!n.background,
       ...(n.abortRequested ? { aborting: true } : {}),
+      ...(n.blocked ? { blocked: n.blocked } : {}),
       state: {
         status: n.state.status,
         ...(n.state.phase ? { phase: n.state.phase } : {}),
         ...(n.state.on ? { on: [...n.state.on] } : {}),
         ...(n.state.policy ? { policy: n.state.policy } : {}),
+        ...(n.state.until !== undefined ? { until: n.state.until } : {}),
       },
       conversations: [...(n.conversations ?? [])],
     };

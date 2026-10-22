@@ -12,7 +12,7 @@ import {
   Workflow,
   Wrench,
 } from "lucide-vue-next";
-import type { TaskNode, TaskOutcome } from "@sdk/api";
+import type { TaskBlockedReason, TaskNode, TaskOutcome, TaskOutcomeName, TaskStateName } from "@sdk/api";
 import { jobRunDone } from "@sdk/jobs";
 import { message } from "../client/hub";
 import { agentHandle, sessionHandle, tasks } from "../client/store";
@@ -23,18 +23,33 @@ const stopping = ref(false);
 const recent = ref<TaskOutcome[]>([]);
 const inspection = ref<unknown>();
 
+/** Task states are a closed set in pi-durable; `sleeping` (a stored wait, new in 1.4.0) must be labelled here too. */
+const taskStates: Record<TaskStateName, string> = {
+  pending: "Queued",
+  running: "Running",
+  waiting: "Waiting",
+  sleeping: "Sleeping",
+  completing: "Finishing",
+  terminal: "Finished",
+};
+const taskOutcomes: Record<TaskOutcomeName | "declined", string> = {
+  completed: "Completed",
+  failed: "Failed",
+  aborted: "Stopped",
+  orphaned: "Orphaned",
+  faulted: "Faulted",
+  declined: "Declined",
+};
+/** Why the device says a task cannot run: `restart_limit` is its crash-loop guard parking a run restarted too often. */
+const blockedReasons: Record<TaskBlockedReason, string> = {
+  missing_task: "No definition",
+  task_too_old: "Task too old",
+  migration_failed: "Migration failed",
+  restart_limit: "Parked after restarts",
+};
 const status = (value: string) =>
-  ({
-    running: "Running",
-    waiting: "Waiting",
-    completed: "Completed",
-    aborted: "Stopped",
-    declined: "Declined",
-    failed: "Failed",
-    pending: "Queued",
-    completing: "Finishing",
-    terminal: "Finished",
-  })[value] ?? value;
+  taskStates[value as TaskStateName] ?? taskOutcomes[value as keyof typeof taskOutcomes] ?? value;
+const blockedReason = (value: TaskBlockedReason) => blockedReasons[value];
 
 /** The newest run of each job, for its row in the list. */
 const latest = computed(() => new Map(jobDefs.value.map((d) => [d.id, jobRuns.value.find((r) => r.job === d.id)])));
@@ -189,6 +204,9 @@ const outcomes = computed(() =>
           <component :is="kindOf(task).icon" :size="16" />
           <strong>{{ kindOf(task).name }}</strong>
           <span class="tag">{{ status(task.state.status) }}</span>
+          <span v-if="task.blocked" class="tag" :title="`This task cannot run: ${task.blocked}`">
+            {{ blockedReason(task.blocked) }}
+          </span>
           <span v-if="phaseOf(task)" class="task-phase">{{ phaseOf(task) }}</span>
           <small
             >#{{ task.id }} {{ kindOf(task).what }}, agent #{{ task.conversationId
