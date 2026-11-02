@@ -1,9 +1,10 @@
 // The Durable Agent Network wire contract: every JSON body and stream frame between
 // dpi-backend and its clients. Types only, so browsers, Node and the TUI share it.
 //
-// Agent events are pi-durable 1.2.0's `watchEvents()` output passed through verbatim.
-// The Wire* event types below copy their JSON shape; apps/dpi-backend/src/contract-check.ts
-// fails the build if pi-durable's own types stop fitting them.
+// Agent events are what pi-durable's live state says is true. 1.5.0 removed its event stream, so the backend
+// renders this event set from a conversation view (apps/dpi-backend/src/view-events.ts). The Wire* event types
+// below are that render's contract with the clients; the renderer reads pi-durable's own state types, so an
+// upgrade that reshapes them fails the backend's build.
 
 import type { JobDef } from "./jobs.js";
 
@@ -250,8 +251,8 @@ export type TaskStateName = "pending" | "running" | "waiting" | "sleeping" | "co
 /** Terminal task outcomes, as recorded in a task receipt. */
 export type TaskOutcomeName = "completed" | "failed" | "aborted" | "orphaned" | "faulted";
 
-/** Why a live task cannot run here. `restart_limit`: the crash-loop guard parked it after too many restarts. */
-export type TaskBlockedReason = "missing_task" | "task_too_old" | "migration_failed" | "restart_limit";
+/** Why a live task cannot run here. 1.5.0 has no parked crash-loop guard: a run restarted too often ends failed. */
+export type TaskBlockedReason = "missing_task" | "task_too_old" | "migration_failed";
 
 export interface TaskNode {
   id: number;

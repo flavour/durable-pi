@@ -78,7 +78,7 @@ data: {"type":"batch","events":[{"type":"message_update", ...}]}
 |---|---|
 | device `/v1/events` | `tree {tree}` (deduped, coalesced 250ms), `activity {items:[{type:"agent.started"\|"agent.finished", sessionId, agentId, at, preview?}]}`, `doc {kind, value, revision}` |
 | session `/v1/sessions/:s/events` | `session {agents, tasks, usage}`, then `agents`, `tasks`, `usage` |
-| agent `.../agents/:a/events` | `snapshot {snapshot, inbox}`, `batch {events}` (pi-durable `watchEvents()` verbatim), `inbox {items}` (queued content), `doc {kind, value}` |
+| agent `.../agents/:a/events` | `snapshot {snapshot, inbox}`, `batch {events}` (the agent view stream's event set: see `src/view-events.ts`), `inbox {items}` (queued content), `doc {kind, value}` |
 | all | `hello {apiVersion, scope, serverTime}` |
 
 The hub's multiplexed stream (`/api/stream`) carries these frames per subscription and adds `stream {streamId}`, `network {devices}`, `fault {error}` and `disconnected {reason}`.

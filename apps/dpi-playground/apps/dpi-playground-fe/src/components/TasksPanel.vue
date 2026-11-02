@@ -40,12 +40,11 @@ const taskOutcomes: Record<TaskOutcomeName | "declined", string> = {
   faulted: "Faulted",
   declined: "Declined",
 };
-/** Why the device says a task cannot run: `restart_limit` is its crash-loop guard parking a run restarted too often. */
+/** Why the device says a task cannot run. A run restarted too often is no longer parked: it ends failed (1.5.0). */
 const blockedReasons: Record<TaskBlockedReason, string> = {
   missing_task: "No definition",
   task_too_old: "Task too old",
   migration_failed: "Migration failed",
-  restart_limit: "Parked after restarts",
 };
 const status = (value: string) =>
   taskStates[value as TaskStateName] ?? taskOutcomes[value as keyof typeof taskOutcomes] ?? value;

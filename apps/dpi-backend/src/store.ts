@@ -64,7 +64,7 @@ import { createJobs, JobRuns, JOB_DEFS, jobDef, resolveJobInput, type Jobs } fro
 import { ADDON_INFO, createAddons, PROMPTS, PromptChecklist, type Addons } from "./addons.js";
 import { JOB_RUNS_DOC } from "../../dpi-sdk/src/jobs.js";
 
-export const DURABLE_VERSION = "1.2.0";
+export const DURABLE_VERSION = "1.5.0";
 
 /** Tools that create, update or delete: shell, files, App State, job runs, sessions, pages and subagents. */
 export const WRITE_TOOLS = new Set([
@@ -218,7 +218,7 @@ export class Store {
     try {
       store.unlockShared = lockFile(`${store.sharedStatePath}.lock`);
       store.shared = await SharedState.open(store.sharedStatePath);
-      store.shared.harness.subscribeCommits(() => store.notify());
+      store.shared.harness.observeCommits({ advance: () => store.notify(), end: () => {} });
       for (const row of store.list()) {
         try {
           await store.openAgent(row);
@@ -574,7 +574,7 @@ export class Store {
             },
             progress: { partialIntervalMs: 100, outputIntervalMs: 100 },
           },
-          onReport: (e, info) => console.error("[durable]", info.type, String(e)),
+          onReport: (report) => console.error("[durable]", report.kind, String(report.error)),
         },
         ctx,
       );
@@ -597,7 +597,10 @@ export class Store {
       row.provider = rootModel.provider;
       row.model = rootModel.modelId;
       this.catalog.prepare("UPDATE sessions SET provider=?,model=? WHERE id=?").run(row.provider, row.model, row.id);
-      const unsubscribe = harness.subscribeCommits(() => this.notify());
+      // 1.5.0's commit observer: advance runs once the commit is stored and published; end only tells us the
+      // Session is gone, which the opened row already handles by reopening on demand.
+      const observation = harness.observeCommits({ advance: () => this.notify(), end: () => {} });
+      const unsubscribe = () => observation.detach();
       this.opened.set(row.id, { harness, unlock, unsubscribe, jobs, addons });
       this.errors.delete(row.id);
       if (create) harness.resume();
@@ -666,11 +669,12 @@ export class Store {
   }
 
   async liveTasks(h: Harness): Promise<TaskNode[]> {
-    const graph = await h.taskGraph(ctx);
+    // taskGraph() is gone in 1.5.0: the task graph is read through a watch, whose value is the live set.
+    const watch = await h.watchTaskGraph(ctx);
     try {
-      return await this.labelTasks(h, Object.values(graph.value.tasks).map((t) => this.taskNode(t)));
+      return await this.labelTasks(h, Object.values(watch.value.tasks).map((t) => this.taskNode(t)));
     } finally {
-      graph.dispose();
+      await watch.stop();
     }
   }
 
@@ -939,12 +943,8 @@ export class Store {
   }
 
   async activeEntries(c: Conversation): Promise<WireEntry[]> {
-    const view = await c.viewState(ctx);
-    try {
-      return JSON.parse(JSON.stringify(view.value.entries)) as WireEntry[];
-    } finally {
-      view.dispose();
-    }
+    // viewState() is gone in 1.5.0; the model's own context is the active transcript.
+    return JSON.parse(JSON.stringify((await c.context(ctx)).entries)) as WireEntry[];
   }
 
   async transcript(c: Conversation, format: string) {

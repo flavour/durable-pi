@@ -202,7 +202,7 @@ test("session lineage and network tree nest forks and subagents", () => {
   assert.equal(networkTree([{ ...device, status: "offline" }])[0].stale, true);
 });
 
-test("a recorded real stream (dpi-backend + pi-durable watchEvents) reduces to the server's transcript", async () => {
+test("a recorded real stream (dpi-backend's agent view stream) reduces to the server's transcript", async () => {
   const { readFileSync } = await import("node:fs");
   const fixture = JSON.parse(readFileSync(new URL("./fixtures/agent-tool-turn.json", import.meta.url), "utf8"));
   const model = new AgentModel();

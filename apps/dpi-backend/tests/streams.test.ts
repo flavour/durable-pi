@@ -71,6 +71,16 @@ test("agent, session and device streams carry snapshots and deltas that reduce t
     unsub();
     assert.ok(sawPartial, "saw streamed partial text");
     assert.ok(agentFrames.some((f) => f.type === "batch" && f.events.some((e) => e.type === "message_update")), "message_update frames");
+    // pi-durable 1.5.0 reports no model-issued tool arguments and no inputs at run end: the stream takes the
+    // arguments from the assistant entry it carries, and ends the run with the inputs it saw the run start with.
+    const agentEvents = () => agentFrames.flatMap((f) => (f.type === "batch" ? f.events : []));
+    const toolStart = agentEvents().find((e) => e.type === "tool_execution_start");
+    assert.ok(toolStart && "args" in toolStart && toolStart.args !== undefined, "a tool start names its arguments");
+    const runEnds = agentEvents().filter((e) => e.type === "run_end");
+    assert.ok(
+      runEnds.length > 0 && runEnds.every((e) => "inputs" in e && Array.isArray(e.inputs)),
+      "run_end carries the inputs of the run that was live",
+    );
     // RECORD_FIXTURES=1 saves the real frame log as the SDK fixture.
     if (process.env.RECORD_FIXTURES) {
       const fixtures = join(import.meta.dirname, "../../dpi-sdk/tests/fixtures");

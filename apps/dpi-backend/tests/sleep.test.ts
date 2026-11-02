@@ -47,18 +47,18 @@ test("a task the device cannot run carries its blocked reason to the client", as
   const t = await tempStore();
   const store = await t.open();
   try {
-    // The crash-loop guard parks a task restarted too often; the reason has to reach the task tree.
+    // A task no registered definition takes stays live with its reason; that has to reach the task tree.
     const node = store.taskNode({
       id: 7,
       kind: "demo.job.change-watch",
       conversationId: 1,
       background: true,
       abortRequested: false,
-      blocked: "restart_limit",
+      blocked: "missing_task",
       state: { status: "sleeping", phase: "watch", until: 1_800_000_000_000 },
       conversations: [],
     });
-    assert.equal(node.blocked, "restart_limit");
+    assert.equal(node.blocked, "missing_task");
     assert.equal(node.state.status, "sleeping");
     assert.equal(node.state.until, 1_800_000_000_000);
   } finally {

@@ -291,7 +291,7 @@ just test smoke faux       # TUI end to end in tmux against a faux backend
 - **`dpi-backend` binds `127.0.0.1` unless told otherwise.** For `ssh` and `exe-dev` devices, `just net up` writes `DPI_HOST=0.0.0.0` (the default for the YAML's `host`) so clients can reach them, and the token guards everything under `/v1`.
 - **`jev-damage-control` is a guard, not a sandbox.** It sends each command to a third-party API, and when Jev is unreachable the command runs.
 - **macOS devices run as a LaunchAgent** in the logged-in session, so unattended reboots need auto-login.
-- **pi-durable is experimental.** This repo pins 1.4.0. Its first open migrates a device's SQLite schema to version 2, and 1.3.0 or earlier cannot open the result, so a device cannot roll back past this release.
+- **pi-durable is experimental.** This repo pins 1.5.0. Its first open migrates a device's SQLite schema to version 2, and 1.3.0 or earlier cannot open the result. 1.5.0 also writes each conversation's live state (`pi.live`) at document version 3, and its tool and generation tasks at versions 3 and 2, so an older build cannot read a conversation this release wrote: reading `pi.live` fails with `Document 2 (pi.live) has newer version 3 than 1`, and an older Harness leaves the newer tasks blocked (`task_too_old`). A device cannot roll back past this release.
 
 ---
 

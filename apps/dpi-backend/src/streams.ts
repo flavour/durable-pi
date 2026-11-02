@@ -2,11 +2,12 @@
 // device (tree + activity), session (agents, tasks, usage) and agent (pi-durable agent events).
 // Streams are viewers only: closing one never aborts work or closes a harness.
 import type { Request, Response } from "express";
-import { watchEvents, type Conversation, type Harness } from "@earendil-works/pi-durable";
+import type { Conversation, Harness, TaskGraph } from "@earendil-works/pi-durable";
+import { agentViewEvents } from "./view-events.js";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import type { Activity, DeviceTree, Frame, StreamScope } from "../../dpi-sdk/src/api.js";
 import { AGENT_DOC_KINDS, DEVICE_DOC_KINDS, type SessionRow, type Store } from "./store.js";
-import { invalid } from "./errors.js";
+import { invalid, notFound } from "./errors.js";
 
 const MAX_BUFFER = 2_000_000;
 
@@ -160,14 +161,14 @@ export function deviceStream(store: Store, req: Request, res: Response) {
 export async function sessionStream(store: Store, row: SessionRow, res: Response) {
   const h = store.harness(row);
   const sse = openSse(res, { kind: "session", sessionId: row.id });
-  const watch = await h.watchTaskGraph(ctx);
-  const tasksOf = (value: { tasks: Readonly<Record<string, unknown>> }) =>
-    Object.values(value.tasks).map((t) => store.taskNode(t));
-  let tasks = await store.labelTasks(h, tasksOf(watch.value));
+  const graph = await h.watchTaskGraph(ctx);
+  const tasksOf = (value: TaskGraph) => Object.values(value.tasks).map((t) => store.taskNode(t));
+  let tasks = await store.labelTasks(h, tasksOf(graph.value));
   sse.send({ type: "session", agents: await store.agents(row, tasks), tasks, usage: await store.usage(h) });
-  watch.start(async (value) => {
+  graph.start(async (call) => {
     if (sse.closed) return;
-    tasks = await store.labelTasks(h, tasksOf(value));
+    if (call.kind !== "value") return; // the graph cannot be read right now; the next value replaces it
+    tasks = await store.labelTasks(h, tasksOf(call.value));
     sse.sendIfChanged("tasks", { type: "tasks", tasks });
     push();
   });
@@ -176,14 +177,14 @@ export async function sessionStream(store: Store, row: SessionRow, res: Response
     sse.sendIfChanged("agents", { type: "agents", agents: await store.agents(row, tasks) });
     sse.sendIfChanged("usage", { type: "usage", usage: await store.usage(h) });
   }, 250);
-  const off = h.subscribeCommits(() => push());
+  const commits = h.observeCommits({ advance: () => push(), end: () => {} });
   // Agent names live in the device catalog, not the harness: a rename only fires the store's change feed.
   const offCatalog = store.subscribe(() => push());
   sse.onClose(() => {
-    off();
+    commits.detach();
     offCatalog();
     push.cancel();
-    void watch.stop();
+    void graph.stop();
   });
 }
 
@@ -197,28 +198,31 @@ export async function agentStream(
 ) {
   const { row, h, c } = target;
   const docs = parseDocs(req.query.docs, AGENT_DOC_KINDS);
-  const stream = await watchEvents(h, c.id, ctx);
+  // pi-durable 1.5.0 holds live agent state rather than an event log: the wire's event set is rendered
+  // from the conversation view, so the clients' reducers are unchanged (see src/view-events.ts).
+  const view = await agentViewEvents(h, c.id as number);
+  if (!view) throw notFound(`No agent ${c.id} in session ${row.id}`);
   const sse = openSse(res, { kind: "agent", sessionId: row.id, agentId: c.id as number });
-  sse.send({
-    type: "snapshot",
-    snapshot: JSON.parse(JSON.stringify(stream.snapshot)),
-    inbox: await store.inbox(h, c),
-  });
+  sse.send({ type: "snapshot", snapshot: view.snapshot(), inbox: await store.inbox(h, c) });
   const pushDocs = coalesce(async () => {
     for (const kind of docs)
       sse.sendIfChanged(`doc:${kind}`, { type: "doc", kind, value: await store.agentDoc(h, c, kind) });
   }, 150);
   await pushDocs.now();
-  stream.start(async (events) => {
-    if (sse.closed) return;
-    sse.send({ type: "batch", events: JSON.parse(JSON.stringify(events)) });
-    if (events.some((e) => e.type === "inbox_update" || e.type === "snapshot"))
-      sse.send({ type: "inbox", items: await store.inbox(h, c) });
-  });
-  const offDocs = docs.length ? h.subscribeCommits(() => pushDocs()) : () => {};
+  const pump = (async () => {
+    for (;;) {
+      const events = await view.next();
+      if (sse.closed || view.ended) return;
+      sse.send({ type: "batch", events });
+      // The wire's inbox items carry their content, which the conversation document alone does not.
+      if (events.some((e) => e.type === "inbox_update")) sse.send({ type: "inbox", items: await store.inbox(h, c) });
+    }
+  })().catch(() => {});
+  void pump;
+  const offDocs = docs.length ? h.observeCommits({ advance: () => pushDocs(), end: () => {} }) : undefined;
   sse.onClose(() => {
-    offDocs();
+    offDocs?.detach();
     pushDocs.cancel();
-    void stream.stop();
+    view.close();
   });
 }
